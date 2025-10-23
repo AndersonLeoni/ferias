@@ -41,7 +41,7 @@ plan = {
 
 df_plan = pd.DataFrame(plan)
 
-st.title("[translate:Ciclo de 30 dias - Treino e Suplementação]")
+st.title("Ciclo de 30 dias - Treino e Suplementação")
 
 # Exibir plano
 st.subheader("Plano diário de treino")
