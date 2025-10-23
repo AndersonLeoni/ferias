@@ -43,11 +43,9 @@ df_plan = pd.DataFrame(plan)
 
 st.title("Ciclo de 30 dias - Treino e Suplementação")
 
-# Exibir plano
 st.subheader("Plano diário de treino")
 st.dataframe(df_plan)
 
-# Entrada de peso diário
 st.subheader("Registro diário de peso")
 day_input = st.number_input("Digite o dia (1-30)", min_value=1, max_value=30, value=1)
 weight_input = st.number_input("Peso atual (kg)", min_value=40.0, max_value=150.0, format="%.1f")
@@ -59,13 +57,17 @@ if st.button("Salvar peso"):
     st.session_state.weights[day_input] = weight_input
     st.success(f"Peso do dia {day_input} salvo: {weight_input} kg")
 
-# Mostrar registro de pesos
+if st.button("Excluir registro do dia"):
+    if day_input in st.session_state.weights:
+        del st.session_state.weights[day_input]
+        st.success(f"Registro do dia {day_input} excluído.")
+    else:
+        st.warning(f"Não há registro para o dia {day_input} para excluir.")
+
 if st.session_state.weights:
     st.subheader("Progresso registrado")
     weights_df = pd.DataFrame(list(st.session_state.weights.items()), columns=["Dia", "Peso (kg)"])
     st.dataframe(weights_df)
-
-    # Traçar gráfico simples
     st.line_chart(weights_df.set_index("Dia"))
 
 st.write("Use este app para acompanhar seu treino, suplementação e peso para atingir a meta 80 kg.")
