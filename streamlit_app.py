@@ -9,9 +9,9 @@ from reportlab.pdfgen import canvas
 st.set_page_config(page_title="Projeto 8 Semanas – Sprint Triathlon Evolution", layout="wide")
 st.title("Projeto 8 Semanas – Sprint Triathlon Evolution")
 
-# Dados locais
-if "df" not in st.session_state:
-    st.session_state.df = pd.DataFrame(columns=[
+# Inicializa o DataFrame na sessão
+if 'df' not in st.session_state or st.session_state['df'] is None:
+    st.session_state['df'] = pd.DataFrame(columns=[
         "Data", "Peso (kg)", "Treino Concluído", "Energia", "Sono", "Notas"
     ])
 
@@ -34,37 +34,41 @@ if st.sidebar.button("Salvar registro"):
         "Sono": sono,
         "Notas": notas,
     }
-    st.session_state.df = st.session_state.df.append(new_row, ignore_index=True)
+    st.session_state['df'] = pd.concat([
+        st.session_state['df'],
+        pd.DataFrame([new_row])
+    ], ignore_index=True)
     st.sidebar.success("Registro salvo!")
 
 # Visualização principal
 st.header("Resumo Semanal")
-df = st.session_state.df
+df = st.session_state['df']
 if df.empty:
     st.info("Nenhum dado registrado.")
 else:
-    df["Data"] = pd.to_datetime(df["Data"])
-    df = df.sort_values(by="Data")
-    df.set_index("Data", inplace=True)
-    st.dataframe(df)
+    df_view = df.copy()
+    df_view["Data"] = pd.to_datetime(df_view["Data"])
+    df_view = df_view.sort_values(by="Data")
+    df_view.set_index("Data", inplace=True)
+    st.dataframe(df_view)
 
     st.subheader("Progresso de Peso")
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df.index, df["Peso (kg)"], marker='o', color='blue')
+    ax.plot(df_view.index, df_view["Peso (kg)"], marker='o', color='blue')
     ax.set_xlabel("Data")
     ax.set_ylabel("Peso (kg)")
     st.pyplot(fig)
 
-# Gerador de PDF do progresso
-def generate_pdf():
+# Geração local de PDF
+def generate_pdf(df):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     c.drawString(80, 800, "Projeto 8 Semanas – Sprint Triathlon Evolution (Resumo)")
     c.drawString(80, 780, f"Peso inicial: 92,7 kg | Meta: 80 kg | Data início: 02/11/25")
     c.drawString(80, 765, "Progresso registrado:")
     y = 750
-    for idx, row in df.tail(15).iterrows():
-        out = f"{idx.date()} | Peso: {row['Peso (kg)']}kg | Energia: {row['Energia']} | Sono: {row['Sono']}h"
+    for idx, row in df.tail(20).iterrows():
+        out = f"{row['Data']} | Peso: {row['Peso (kg)']}kg | Energia: {row['Energia']} | Sono: {row['Sono']}h"
         c.drawString(80, y, out)
         y -= 14
         if y < 100:
@@ -76,7 +80,7 @@ def generate_pdf():
 
 st.subheader("Exportação de Relatório (PDF)")
 if st.button("Gerar PDF"):
-    pdf = generate_pdf()
+    pdf = generate_pdf(df)
     st.download_button(
         label="Download do relatório PDF",
         data=pdf,
@@ -84,4 +88,4 @@ if st.button("Gerar PDF"):
         mime="application/pdf"
     )
 
-st.caption("App local - sem Google - sincronização somente na sessão Streamlit")
+st.caption("App local - sem Google - sincronização apenas dentro do app Streamlit")
