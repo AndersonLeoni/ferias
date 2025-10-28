@@ -1,172 +1,87 @@
 import streamlit as st
 import pandas as pd
 import datetime
-from google.oauth2 import service_account
-import gspread
-from gspread_dataframe import set_with_dataframe
 import matplotlib.pyplot as plt
 from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
-import json
-import os
-from google.oauth2 import service_account
-key_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-creds = service_account.Credentials.from_service_account_info(key_dict)
-
-
-# Configurações do App
 st.set_page_config(page_title="Projeto 8 Semanas – Sprint Triathlon Evolution", layout="wide")
 st.title("Projeto 8 Semanas – Sprint Triathlon Evolution")
-st.markdown("""<style>
-    .block-container {padding: 1rem 2rem;}
-    </style>""", unsafe_allow_html=True)
 
-# Google Sheets Configurações
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-          "https://www.googleapis.com/auth/drive"]
+# Dados locais
+if "df" not in st.session_state:
+    st.session_state.df = pd.DataFrame(columns=[
+        "Data", "Peso (kg)", "Treino Concluído", "Energia", "Sono", "Notas"
+    ])
 
-@st.cache_resource(ttl=3600)
-def get_gsheet_client():
-    creds = None
-    try:
-        creds = Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"], scopes=SCOPES)
-    except Exception as e:
-        st.error(f"Erro ao carregar credenciais Google: {e}")
-        st.stop()
-    return gspread.authorize(creds)
-
-@st.cache_data(ttl=300)
-def create_or_open_spreadsheet(client):
-    try:
-        sh_title = "8Semanas-TriSprint-Evolution"
-        try:
-            sh = client.open(sh_title)
-        except gspread.exceptions.SpreadsheetNotFound:
-            sh = client.create(sh_title)
-            # Compartilhar com email do usuário para edição se necessário
-            sh.share(st.secrets["user_email"], perm_type='user', role='writer')
-        return sh
-    except Exception as e:
-        st.error(f"Erro abrir/criar planilha Google: {e}")
-        st.stop()
-
-# Início integração Google Sheets
-client = get_gsheet_client()
-spreadsheet = create_or_open_spreadsheet(client)
-
-# Função para carregar dados ou criar abas iniciais
-def load_data():
-    try:
-        worksheet = spreadsheet.worksheet("Registros")
-        df = pd.DataFrame(worksheet.get_all_records())
-        return df
-    except gspread.exceptions.WorksheetNotFound:
-        worksheet = spreadsheet.add_worksheet(title="Registros", rows="1000", cols="20")
-        df = pd.DataFrame(columns=["Data", "Peso (kg)", "Peso / Weight (kg)", "Treino Concluído", "Workout Completed", "Energia", "Energy", "Sono", "Sleep", "Notas", "Notes"])
-        set_with_dataframe(worksheet, df)
-        return df
-
-def save_data(df):
-    worksheet = spreadsheet.worksheet("Registros")
-    worksheet.clear()
-    set_with_dataframe(worksheet, df)
-
-# Carrega os dados para o app
-df = load_data()
-
-# Painel lateral - input de dados diário
-st.sidebar.header("Registro Diário / Daily Log")
+# Painel lateral - registro diário
+st.sidebar.header("Registro Diário")
 today = datetime.date.today()
+input_date = st.sidebar.date_input("Data", value=today, max_value=today)
+peso = st.sidebar.number_input("Peso (kg)", min_value=20.0, max_value=200.0, value=92.7, step=0.1)
+treino_ok = st.sidebar.checkbox("Treino concluído")
+energia = st.sidebar.slider("Energia (0-10)", 0, 10, 7)
+sono = st.sidebar.slider("Sono (horas)", 0, 12, 7)
+notas = st.sidebar.text_area("Notas", max_chars=200)
 
-col1, col2 = st.sidebar.columns(2)
-input_date = col1.date_input("Data / Date", value=today, max_value=today)
-peso_pt = col2.number_input("Peso (kg)", min_value=20.0, max_value=200.0, value=92.7, step=0.1)
+if st.sidebar.button("Salvar registro"):
+    new_row = {
+        "Data": input_date.strftime("%Y-%m-%d"),
+        "Peso (kg)": peso,
+        "Treino Concluído": treino_ok,
+        "Energia": energia,
+        "Sono": sono,
+        "Notas": notas,
+    }
+    st.session_state.df = st.session_state.df.append(new_row, ignore_index=True)
+    st.sidebar.success("Registro salvo!")
 
-col3, col4 = st.sidebar.columns(2)
-treino_concluido = col3.checkbox("Treino concluído / Workout Completed")
-energia = col4.slider("Energia / Energy (0-10)", 0, 10, 7)
-
-col5, col6 = st.sidebar.columns(2)
-sono = col5.slider("Sono / Sleep (hours)", 0, 12, 7)
-notas = col6.text_area("Notas / Notes", max_chars=200)
-
-if st.sidebar.button("Salvar registro / Save log"):
-    new_row = {"Data": input_date.strftime("%Y-%m-%d"),
-               "Peso (kg)": peso_pt,
-               "Peso / Weight (kg)": peso_pt,
-               "Treino Concluído": treino_concluido,
-               "Workout Completed": treino_concluido,
-               "Energia": energia,
-               "Energy": energia,
-               "Sono": sono,
-               "Sleep": sono,
-               "Notas": notas,
-               "Notes": notas}
-    df = df.append(new_row, ignore_index=True)
-    save_data(df)
-    st.sidebar.success("Registro salvo! / Log saved!")
-
-# Seção principal - visualização e análise
-st.header("Resumo Semanal / Weekly Summary")
-
+# Visualização principal
+st.header("Resumo Semanal")
+df = st.session_state.df
 if df.empty:
-    st.info("Nenhum dado registrado. / No data logged yet.")
+    st.info("Nenhum dado registrado.")
 else:
     df["Data"] = pd.to_datetime(df["Data"])
     df = df.sort_values(by="Data")
     df.set_index("Data", inplace=True)
+    st.dataframe(df)
 
-    # Mostrar tabela bilíngue lado a lado
-    col_pt, col_en = st.columns(2)
-
-    with col_pt:
-        st.subheader("Dados em Português")
-        st.dataframe(df[["Peso (kg)", "Treino Concluído", "Energia", "Sono", "Notas"]].rename(columns={
-            "Peso (kg)": "Peso (kg)",
-            "Treino Concluído": "Treino Concluído",
-            "Energia": "Energia",
-            "Sono": "Sono",
-            "Notas": "Notas"
-        }))
-
-    with col_en:
-        st.subheader("[translate:Data in English]")
-        st.dataframe(df[["Peso / Weight (kg)", "Workout Completed", "Energy", "Sleep", "Notes"]].rename(columns={
-            "Peso / Weight (kg)": "Weight (kg)",
-            "Workout Completed": "Workout Completed",
-            "Energy": "Energy",
-            "Sleep": "Sleep",
-            "Notes": "Notes"
-        }))
-
-    # Gráfico de progresso de peso e treino
-    st.subheader("Progresso de Peso e Treinos / Weight & Workout Progress")
-    fig, ax = plt.subplots(figsize=(12, 4))
-    ax.plot(df.index, df["Peso (kg)"], label="Peso (kg)", color="blue")
-    ax.plot(df.index, df["Peso / Weight (kg)"], label="Weight (kg)", color="green", linestyle="--")
-    ax.set_xlabel("Data / Date")
-    ax.set_ylabel("Peso / Weight (kg)")
-    ax.legend()
+    st.subheader("Progresso de Peso")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(df.index, df["Peso (kg)"], marker='o', color='blue')
+    ax.set_xlabel("Data")
+    ax.set_ylabel("Peso (kg)")
     st.pyplot(fig)
 
-    # Mais análises podem ser adicionadas aqui...
+# Gerador de PDF do progresso
+def generate_pdf():
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    c.drawString(80, 800, "Projeto 8 Semanas – Sprint Triathlon Evolution (Resumo)")
+    c.drawString(80, 780, f"Peso inicial: 92,7 kg | Meta: 80 kg | Data início: 02/11/25")
+    c.drawString(80, 765, "Progresso registrado:")
+    y = 750
+    for idx, row in df.tail(15).iterrows():
+        out = f"{idx.date()} | Peso: {row['Peso (kg)']}kg | Energia: {row['Energia']} | Sono: {row['Sono']}h"
+        c.drawString(80, y, out)
+        y -= 14
+        if y < 100:
+            c.showPage()
+            y = 800
+    c.save()
+    buffer.seek(0)
+    return buffer
 
-# Exportação PDF (exemplo simples)
-import pdfkit
-import os
+st.subheader("Exportação de Relatório (PDF)")
+if st.button("Gerar PDF"):
+    pdf = generate_pdf()
+    st.download_button(
+        label="Download do relatório PDF",
+        data=pdf,
+        file_name="Projeto_8_Semanas_Sprint_Triathlon_Evolution.pdf",
+        mime="application/pdf"
+    )
 
-if st.button("Exportar relatório PDF / Export PDF"):
-    pdf_file = "Projeto_8Semanas_Sprint_Triathlon_Evolution.pdf"
-    html_content = st.markdown("""
-    <h1>Projeto 8 Semanas – Sprint Triathlon Evolution</h1>
-    <p>Relatório gerado em: {}</p>
-    <!-- Mais detalhes do relatório podem ser inclusos aqui -->
-    """.format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    options = {
-        'page-size': 'A4',
-        'encoding': "UTF-8",
-    }
-    pdfkit.from_string(html_content.get_value(), pdf_file, options=options)
-    st.success(f"Relatório exportado: {pdf_file}")
-
+st.caption("App local - sem Google - sincronização somente na sessão Streamlit")
