@@ -1,11 +1,18 @@
 import streamlit as st
 import pandas as pd
 import datetime
-from google.oauth2.service_account import Credentials
+from google.oauth2 import service_account
 import gspread
 from gspread_dataframe import set_with_dataframe
 import matplotlib.pyplot as plt
 from io import BytesIO
+
+import json
+import os
+from google.oauth2 import service_account
+key_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+creds = service_account.Credentials.from_service_account_info(key_dict)
+
 
 # Configurações do App
 st.set_page_config(page_title="Projeto 8 Semanas – Sprint Triathlon Evolution", layout="wide")
